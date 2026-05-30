@@ -315,6 +315,84 @@ class ModelThroughput:
         }
 
 
+@dataclass(frozen=True)
+class AttentionEstimate:
+    mode: str
+    batch: int
+    total_tokens: int
+    attention_pairs: int
+    flops: int
+    kv_cache_read_bytes: int
+    kv_cache_write_bytes: int
+    traffic_bytes: int
+    compute_time_us: float
+    bandwidth_time_us: float
+    time_us: float
+    bottleneck: str
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "mode": self.mode,
+            "batch": self.batch,
+            "total_tokens": self.total_tokens,
+            "attention_pairs": self.attention_pairs,
+            "flops": self.flops,
+            "kv_cache_read_bytes": self.kv_cache_read_bytes,
+            "kv_cache_write_bytes": self.kv_cache_write_bytes,
+            "traffic_bytes": self.traffic_bytes,
+            "compute_time_us": self.compute_time_us,
+            "bandwidth_time_us": self.bandwidth_time_us,
+            "time_us": self.time_us,
+            "bottleneck": self.bottleneck,
+        }
+
+
+@dataclass(frozen=True)
+class SequenceWorkload:
+    mode: str
+    batch: int
+    prompt_length: int
+    context_length: int
+    generated_tokens: int
+    total_tokens: int
+    projection_passes: int
+    attention_pairs: int
+    weight_mode: str
+    linear_layer_time_us: float
+    attention_layer_time_us: float
+    total_layer_time_us: float
+    total_time_us: float
+    tokens_per_second: float
+    total_traffic_bytes: int
+    hbm_traffic_per_token_bytes: float
+    bandwidth_utilization_fraction: float
+    linear_layer: LayerEstimate
+    attention: AttentionEstimate
+
+    def to_dict(self, peak_hbm_bytes_per_s: float) -> Dict[str, object]:
+        return {
+            "mode": self.mode,
+            "batch": self.batch,
+            "prompt_length": self.prompt_length,
+            "context_length": self.context_length,
+            "generated_tokens": self.generated_tokens,
+            "total_tokens": self.total_tokens,
+            "projection_passes": self.projection_passes,
+            "attention_pairs": self.attention_pairs,
+            "weight_mode": self.weight_mode,
+            "linear_layer_time_us": self.linear_layer_time_us,
+            "attention_layer_time_us": self.attention_layer_time_us,
+            "total_layer_time_us": self.total_layer_time_us,
+            "total_time_us": self.total_time_us,
+            "tokens_per_second": self.tokens_per_second,
+            "total_traffic_bytes": self.total_traffic_bytes,
+            "hbm_traffic_per_token_bytes": self.hbm_traffic_per_token_bytes,
+            "bandwidth_utilization_fraction": self.bandwidth_utilization_fraction,
+            "linear_layer": self.linear_layer.to_dict(peak_hbm_bytes_per_s),
+            "attention": self.attention.to_dict(),
+        }
+
+
 @dataclass
 class Ascend950:
     soc: SoCTopology = field(default_factory=SoCTopology.create)
@@ -684,3 +762,196 @@ class Ascend950:
             self.full_model_throughput(batch, cfg=cfg, weight_mode=weight_mode)
             for batch in batches
         ]
+
+    def _attention_estimate(
+        self,
+        mode: str,
+        batch: int,
+        total_tokens: int,
+        attention_pairs: int,
+        cfg: DeepSeekV4FlashConfig,
+    ) -> AttentionEstimate:
+        # Simplified MLA attention accounting: QK + AV each cost 2*KV-rank
+        # FLOPs per causal pair, plus a small softmax term. KV cache traffic
+        # reads K and V per pair and writes the produced token K/V once.
+        flops_per_pair = 4 * cfg.kv_rank + 5
+        flops = attention_pairs * flops_per_pair
+        kv_cache_read_bytes = attention_pairs * cfg.kv_rank * 2 * BF16_BYTES
+        kv_cache_write_bytes = total_tokens * cfg.kv_rank * 2 * BF16_BYTES
+        traffic_bytes = kv_cache_read_bytes + kv_cache_write_bytes
+        compute_time_us = flops / self.peak_flops_per_s * 1e6
+        bandwidth_time_us = traffic_bytes / self.hbm_bytes_per_s * 1e6
+        time_us = max(compute_time_us, bandwidth_time_us)
+        bottleneck = "compute" if compute_time_us >= bandwidth_time_us else "memory"
+
+        return AttentionEstimate(
+            mode=mode,
+            batch=batch,
+            total_tokens=total_tokens,
+            attention_pairs=attention_pairs,
+            flops=flops,
+            kv_cache_read_bytes=kv_cache_read_bytes,
+            kv_cache_write_bytes=kv_cache_write_bytes,
+            traffic_bytes=traffic_bytes,
+            compute_time_us=compute_time_us,
+            bandwidth_time_us=bandwidth_time_us,
+            time_us=time_us,
+            bottleneck=bottleneck,
+        )
+
+    def prefill_workload(
+        self,
+        batch: int,
+        prompt_length: int,
+        cfg: Optional[DeepSeekV4FlashConfig] = None,
+        weight_mode: str = "fp8",
+        apply_coda_savings: bool = True,
+        include_k_tiling: bool = True,
+    ) -> SequenceWorkload:
+        if batch <= 0:
+            raise ValueError("batch must be positive")
+        if prompt_length <= 0:
+            raise ValueError("prompt_length must be positive")
+
+        cfg = cfg or DeepSeekV4FlashConfig()
+        total_tokens = batch * prompt_length
+        attention_pairs = batch * prompt_length * (prompt_length + 1) // 2
+        layer = self.full_layer_roofline(
+            batch=total_tokens,
+            cfg=cfg,
+            weight_mode=weight_mode,
+            apply_coda_savings=apply_coda_savings,
+            include_k_tiling=include_k_tiling,
+        )
+        attention = self._attention_estimate(
+            mode="prefill",
+            batch=batch,
+            total_tokens=total_tokens,
+            attention_pairs=attention_pairs,
+            cfg=cfg,
+        )
+        linear_layer_time_us = layer.time_us
+        total_layer_time_us = linear_layer_time_us + attention.time_us
+        total_time_us = total_layer_time_us * cfg.layers
+        total_traffic = (layer.traffic_after_coda_bytes + attention.traffic_bytes) * cfg.layers
+        seconds = total_time_us * 1e-6
+        achieved_bps = total_traffic / seconds if seconds else 0.0
+
+        return SequenceWorkload(
+            mode="prefill",
+            batch=batch,
+            prompt_length=prompt_length,
+            context_length=0,
+            generated_tokens=prompt_length,
+            total_tokens=total_tokens,
+            projection_passes=1,
+            attention_pairs=attention_pairs,
+            weight_mode=_require_weight_mode(weight_mode),
+            linear_layer_time_us=linear_layer_time_us,
+            attention_layer_time_us=attention.time_us,
+            total_layer_time_us=total_layer_time_us,
+            total_time_us=total_time_us,
+            tokens_per_second=total_tokens / seconds if seconds else 0.0,
+            total_traffic_bytes=total_traffic,
+            hbm_traffic_per_token_bytes=total_traffic / total_tokens,
+            bandwidth_utilization_fraction=achieved_bps / self.hbm_bytes_per_s,
+            linear_layer=layer,
+            attention=attention,
+        )
+
+    def decode_workload(
+        self,
+        batch: int,
+        context_length: int,
+        generated_tokens: int = 1,
+        cfg: Optional[DeepSeekV4FlashConfig] = None,
+        weight_mode: str = "fp8",
+        apply_coda_savings: bool = True,
+        include_k_tiling: bool = True,
+    ) -> SequenceWorkload:
+        if batch <= 0:
+            raise ValueError("batch must be positive")
+        if context_length < 0:
+            raise ValueError("context_length must be non-negative")
+        if generated_tokens <= 0:
+            raise ValueError("generated_tokens must be positive")
+
+        cfg = cfg or DeepSeekV4FlashConfig()
+        total_tokens = batch * generated_tokens
+        attention_pairs = batch * sum(
+            context_length + step + 1 for step in range(generated_tokens)
+        )
+        layer = self.full_layer_roofline(
+            batch=batch,
+            cfg=cfg,
+            weight_mode=weight_mode,
+            apply_coda_savings=apply_coda_savings,
+            include_k_tiling=include_k_tiling,
+        )
+        attention = self._attention_estimate(
+            mode="decode",
+            batch=batch,
+            total_tokens=total_tokens,
+            attention_pairs=attention_pairs,
+            cfg=cfg,
+        )
+        linear_layer_time_us = layer.time_us * generated_tokens
+        total_layer_time_us = linear_layer_time_us + attention.time_us
+        total_time_us = total_layer_time_us * cfg.layers
+        total_traffic = (
+            layer.traffic_after_coda_bytes * generated_tokens + attention.traffic_bytes
+        ) * cfg.layers
+        seconds = total_time_us * 1e-6
+        achieved_bps = total_traffic / seconds if seconds else 0.0
+
+        return SequenceWorkload(
+            mode="decode",
+            batch=batch,
+            prompt_length=0,
+            context_length=context_length,
+            generated_tokens=generated_tokens,
+            total_tokens=total_tokens,
+            projection_passes=generated_tokens,
+            attention_pairs=attention_pairs,
+            weight_mode=_require_weight_mode(weight_mode),
+            linear_layer_time_us=linear_layer_time_us,
+            attention_layer_time_us=attention.time_us,
+            total_layer_time_us=total_layer_time_us,
+            total_time_us=total_time_us,
+            tokens_per_second=total_tokens / seconds if seconds else 0.0,
+            total_traffic_bytes=total_traffic,
+            hbm_traffic_per_token_bytes=total_traffic / total_tokens,
+            bandwidth_utilization_fraction=achieved_bps / self.hbm_bytes_per_s,
+            linear_layer=layer,
+            attention=attention,
+        )
+
+    def prefill_decode_comparison(
+        self,
+        batch: int,
+        prompt_length: int,
+        cfg: Optional[DeepSeekV4FlashConfig] = None,
+        weight_mode: str = "fp8",
+        apply_coda_savings: bool = True,
+        include_k_tiling: bool = True,
+    ) -> Dict[str, SequenceWorkload]:
+        cfg = cfg or DeepSeekV4FlashConfig()
+        return {
+            "prefill": self.prefill_workload(
+                batch=batch,
+                prompt_length=prompt_length,
+                cfg=cfg,
+                weight_mode=weight_mode,
+                apply_coda_savings=apply_coda_savings,
+                include_k_tiling=include_k_tiling,
+            ),
+            "decode": self.decode_workload(
+                batch=batch,
+                context_length=0,
+                generated_tokens=prompt_length,
+                cfg=cfg,
+                weight_mode=weight_mode,
+                apply_coda_savings=apply_coda_savings,
+                include_k_tiling=include_k_tiling,
+            ),
+        }

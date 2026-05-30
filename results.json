@@ -3006,7 +3006,7 @@
         "bandwidth_utilization_fraction": 0.5074957142076029
       }
     },
-    "prefill_b256": {
+    "batched_decode_b256": {
       "batch": 256,
       "layers": 32,
       "weight_mode": "fp8",
@@ -3253,6 +3253,546 @@
       }
     }
   },
+  "prefill_decode_fair": {
+    "prefill": {
+      "mode": "prefill",
+      "batch": 1,
+      "prompt_length": 256,
+      "context_length": 0,
+      "generated_tokens": 256,
+      "total_tokens": 256,
+      "projection_passes": 1,
+      "attention_pairs": 32896,
+      "weight_mode": "fp8",
+      "linear_layer_time_us": 224.18328189830507,
+      "attention_layer_time_us": 28.289706666666667,
+      "total_layer_time_us": 252.47298856497173,
+      "total_time_us": 8079.135634079095,
+      "tokens_per_second": 31686.558017438252,
+      "total_traffic_bytes": 6547570688,
+      "hbm_traffic_per_token_bytes": 25576448.0,
+      "bandwidth_utilization_fraction": 0.3376790014299969,
+      "linear_layer": {
+        "batch": 256,
+        "weight_mode": "fp8",
+        "operators": [
+          {
+            "name": "RMSNorm",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 2621440,
+            "traffic": {
+              "weight_bytes": 4096,
+              "activation_read_bytes": 1048576,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 2101248
+            },
+            "arithmetic_intensity_flop_per_byte": 1.2475633528265107,
+            "compute_time_us": 0.007405197740112994,
+            "bandwidth_time_us": 0.8755200000000001,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 0.8755200000000001,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "Q_proj",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 1610612736,
+            "traffic": {
+              "weight_bytes": 3145728,
+              "activation_read_bytes": 1048576,
+              "activation_write_bytes": 786432,
+              "intermediate_bytes": 0,
+              "total_bytes": 4980736
+            },
+            "arithmetic_intensity_flop_per_byte": 323.36842105263156,
+            "compute_time_us": 4.549753491525424,
+            "bandwidth_time_us": 2.0753066666666666,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 11.549753491525424,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "KV_proj",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 536870912,
+            "traffic": {
+              "weight_bytes": 1048576,
+              "activation_read_bytes": 1048576,
+              "activation_write_bytes": 262144,
+              "intermediate_bytes": 0,
+              "total_bytes": 2359296
+            },
+            "arithmetic_intensity_flop_per_byte": 227.55555555555554,
+            "compute_time_us": 1.5165844971751412,
+            "bandwidth_time_us": 0.98304,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 8.516584497175142,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "AttnOut",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 1610612736,
+            "traffic": {
+              "weight_bytes": 3145728,
+              "activation_read_bytes": 786432,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 4980736
+            },
+            "arithmetic_intensity_flop_per_byte": 323.36842105263156,
+            "compute_time_us": 4.549753491525424,
+            "bandwidth_time_us": 2.0753066666666666,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 11.549753491525424,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "Residual",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 524288,
+            "traffic": {
+              "weight_bytes": 0,
+              "activation_read_bytes": 2097152,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 3145728
+            },
+            "arithmetic_intensity_flop_per_byte": 0.16666666666666666,
+            "compute_time_us": 0.0014810395480225988,
+            "bandwidth_time_us": 1.3107199999999999,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 1.3107199999999999,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "RMSNorm",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 2621440,
+            "traffic": {
+              "weight_bytes": 4096,
+              "activation_read_bytes": 1048576,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 2101248
+            },
+            "arithmetic_intensity_flop_per_byte": 1.2475633528265107,
+            "compute_time_us": 0.007405197740112994,
+            "bandwidth_time_us": 0.8755200000000001,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 0.8755200000000001,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "MoE_gate",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 268435456,
+            "traffic": {
+              "weight_bytes": 524288,
+              "activation_read_bytes": 1048576,
+              "activation_write_bytes": 131072,
+              "intermediate_bytes": 0,
+              "total_bytes": 1703936
+            },
+            "arithmetic_intensity_flop_per_byte": 157.53846153846155,
+            "compute_time_us": 0.7582922485875706,
+            "bandwidth_time_us": 0.7099733333333333,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 7.758292248587571,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "MoE_gate_up",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 34359738368,
+            "traffic": {
+              "weight_bytes": 67108864,
+              "activation_read_bytes": 8388608,
+              "activation_write_bytes": 16777216,
+              "intermediate_bytes": 0,
+              "total_bytes": 92274688
+            },
+            "arithmetic_intensity_flop_per_byte": 372.3636363636364,
+            "compute_time_us": 97.06140781920904,
+            "bandwidth_time_us": 38.44778666666667,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 104.06140781920904,
+            "bottleneck": "compute"
+          },
+          {
+            "name": "MoE_down",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 17179869184,
+            "traffic": {
+              "weight_bytes": 33554432,
+              "activation_read_bytes": 8388608,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 42991616
+            },
+            "arithmetic_intensity_flop_per_byte": 399.609756097561,
+            "compute_time_us": 48.53070390960452,
+            "bandwidth_time_us": 17.913173333333333,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 55.53070390960452,
+            "bottleneck": "compute"
+          },
+          {
+            "name": "SharedExpert",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 6442450944,
+            "traffic": {
+              "weight_bytes": 12582912,
+              "activation_read_bytes": 1048576,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 14680064
+            },
+            "arithmetic_intensity_flop_per_byte": 438.85714285714283,
+            "compute_time_us": 18.199013966101695,
+            "bandwidth_time_us": 6.116693333333333,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 25.199013966101695,
+            "bottleneck": "compute"
+          },
+          {
+            "name": "Residual",
+            "batch": 256,
+            "weight_mode": "fp8",
+            "flops": 524288,
+            "traffic": {
+              "weight_bytes": 0,
+              "activation_read_bytes": 2097152,
+              "activation_write_bytes": 1048576,
+              "intermediate_bytes": 0,
+              "total_bytes": 3145728
+            },
+            "arithmetic_intensity_flop_per_byte": 0.16666666666666666,
+            "compute_time_us": 0.0014810395480225988,
+            "bandwidth_time_us": 1.3107199999999999,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 1.3107199999999999,
+            "bottleneck": "memory"
+          }
+        ],
+        "total_flops": 62014881792,
+        "unfused_traffic_bytes": 174465024,
+        "coda_saved_bytes": 37748736,
+        "traffic_after_coda_bytes": 136716288,
+        "compute_time_us": 175.18328189830507,
+        "bandwidth_time_us": 56.965120000000006,
+        "k_tiling_overhead_us": 49.0,
+        "time_us": 224.18328189830507,
+        "bottleneck": "compute",
+        "bandwidth_utilization_fraction": 0.254100660484758
+      },
+      "attention": {
+        "mode": "prefill",
+        "batch": 1,
+        "total_tokens": 256,
+        "attention_pairs": 32896,
+        "flops": 67535488,
+        "kv_cache_read_bytes": 67371008,
+        "kv_cache_write_bytes": 524288,
+        "traffic_bytes": 67895296,
+        "compute_time_us": 0.19077821468926554,
+        "bandwidth_time_us": 28.289706666666667,
+        "time_us": 28.289706666666667,
+        "bottleneck": "memory"
+      }
+    },
+    "decode": {
+      "mode": "decode",
+      "batch": 1,
+      "prompt_length": 0,
+      "context_length": 0,
+      "generated_tokens": 256,
+      "total_tokens": 256,
+      "projection_passes": 256,
+      "attention_pairs": 32896,
+      "weight_mode": "fp8",
+      "linear_layer_time_us": 25469.82912,
+      "attention_layer_time_us": 28.289706666666667,
+      "total_layer_time_us": 25498.118826666665,
+      "total_time_us": 815939.8024533333,
+      "tokens_per_second": 313.74863590459745,
+      "total_traffic_bytes": 994876325888,
+      "hbm_traffic_per_token_bytes": 3886235648.0,
+      "bandwidth_utilization_fraction": 0.5080421389015914,
+      "linear_layer": {
+        "batch": 1,
+        "weight_mode": "fp8",
+        "operators": [
+          {
+            "name": "RMSNorm",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 10240,
+            "traffic": {
+              "weight_bytes": 4096,
+              "activation_read_bytes": 4096,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 12288
+            },
+            "arithmetic_intensity_flop_per_byte": 0.8333333333333334,
+            "compute_time_us": 2.8926553672316383e-05,
+            "bandwidth_time_us": 0.0051199999999999996,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 0.0051199999999999996,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "Q_proj",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 6291456,
+            "traffic": {
+              "weight_bytes": 3145728,
+              "activation_read_bytes": 4096,
+              "activation_write_bytes": 3072,
+              "intermediate_bytes": 0,
+              "total_bytes": 3152896
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9954530691783046,
+            "compute_time_us": 0.017772474576271187,
+            "bandwidth_time_us": 1.3137066666666666,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 8.313706666666667,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "KV_proj",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 2097152,
+            "traffic": {
+              "weight_bytes": 1048576,
+              "activation_read_bytes": 4096,
+              "activation_write_bytes": 1024,
+              "intermediate_bytes": 0,
+              "total_bytes": 1053696
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9902818270165208,
+            "compute_time_us": 0.005924158192090395,
+            "bandwidth_time_us": 0.43904,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 7.43904,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "AttnOut",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 6291456,
+            "traffic": {
+              "weight_bytes": 3145728,
+              "activation_read_bytes": 3072,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 3152896
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9954530691783046,
+            "compute_time_us": 0.017772474576271187,
+            "bandwidth_time_us": 1.3137066666666666,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 8.313706666666667,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "Residual",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 2048,
+            "traffic": {
+              "weight_bytes": 0,
+              "activation_read_bytes": 8192,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 12288
+            },
+            "arithmetic_intensity_flop_per_byte": 0.16666666666666666,
+            "compute_time_us": 5.785310734463277e-06,
+            "bandwidth_time_us": 0.0051199999999999996,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 0.0051199999999999996,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "RMSNorm",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 10240,
+            "traffic": {
+              "weight_bytes": 4096,
+              "activation_read_bytes": 4096,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 12288
+            },
+            "arithmetic_intensity_flop_per_byte": 0.8333333333333334,
+            "compute_time_us": 2.8926553672316383e-05,
+            "bandwidth_time_us": 0.0051199999999999996,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 0.0051199999999999996,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "MoE_gate",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 1048576,
+            "traffic": {
+              "weight_bytes": 524288,
+              "activation_read_bytes": 4096,
+              "activation_write_bytes": 512,
+              "intermediate_bytes": 0,
+              "total_bytes": 528896
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9825750242013553,
+            "compute_time_us": 0.0029620790960451977,
+            "bandwidth_time_us": 0.22037333333333334,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 7.220373333333334,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "MoE_gate_up",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 134217728,
+            "traffic": {
+              "weight_bytes": 67108864,
+              "activation_read_bytes": 32768,
+              "activation_write_bytes": 65536,
+              "intermediate_bytes": 0,
+              "total_bytes": 67207168
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9970745977571915,
+            "compute_time_us": 0.3791461242937853,
+            "bandwidth_time_us": 28.00298666666667,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 35.00298666666667,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "MoE_down",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 67108864,
+            "traffic": {
+              "weight_bytes": 33554432,
+              "activation_read_bytes": 32768,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 33591296
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9978051457139374,
+            "compute_time_us": 0.18957306214689265,
+            "bandwidth_time_us": 13.996373333333333,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 20.99637333333333,
+            "bottleneck": "memory"
+          },
+          {
+            "name": "SharedExpert",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 25165824,
+            "traffic": {
+              "weight_bytes": 12582912,
+              "activation_read_bytes": 4096,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 12591104
+            },
+            "arithmetic_intensity_flop_per_byte": 1.9986987638256344,
+            "compute_time_us": 0.07108989830508475,
+            "bandwidth_time_us": 5.246293333333333,
+            "k_blocks": 1,
+            "k_tiling_overhead_us": 7.0,
+            "time_us": 12.246293333333334,
+            "bottleneck": "k_tiling_overhead"
+          },
+          {
+            "name": "Residual",
+            "batch": 1,
+            "weight_mode": "fp8",
+            "flops": 2048,
+            "traffic": {
+              "weight_bytes": 0,
+              "activation_read_bytes": 8192,
+              "activation_write_bytes": 4096,
+              "intermediate_bytes": 0,
+              "total_bytes": 12288
+            },
+            "arithmetic_intensity_flop_per_byte": 0.16666666666666666,
+            "compute_time_us": 5.785310734463277e-06,
+            "bandwidth_time_us": 0.0051199999999999996,
+            "k_blocks": 0,
+            "k_tiling_overhead_us": 0.0,
+            "time_us": 0.0051199999999999996,
+            "bottleneck": "memory"
+          }
+        ],
+        "total_flops": 242245632,
+        "unfused_traffic_bytes": 121327104,
+        "coda_saved_bytes": 147456,
+        "traffic_after_coda_bytes": 121179648,
+        "compute_time_us": 0.6843096949152542,
+        "bandwidth_time_us": 50.491519999999994,
+        "k_tiling_overhead_us": 49.0,
+        "time_us": 99.49152,
+        "bottleneck": "memory",
+        "bandwidth_utilization_fraction": 0.5074957142076029
+      },
+      "attention": {
+        "mode": "decode",
+        "batch": 1,
+        "total_tokens": 256,
+        "attention_pairs": 32896,
+        "flops": 67535488,
+        "kv_cache_read_bytes": 67371008,
+        "kv_cache_write_bytes": 524288,
+        "traffic_bytes": 67895296,
+        "compute_time_us": 0.19077821468926554,
+        "bandwidth_time_us": 28.289706666666667,
+        "time_us": 28.289706666666667,
+        "bottleneck": "memory"
+      }
+    }
+  },
   "coda_kernels": {
     "fused_matmul_residual_rmsnorm": {
       "name": "fused_matmul_residual_rmsnorm",
@@ -3261,7 +3801,7 @@
         "Load activation tile through Vec(UB) into Left(L0A)",
         "Load FP8/BF16 weight tile through Mat(L1) into Right(L0B)",
         "Accumulate matmul in Acc(L0C)",
-        "Consume residual from Vec(UB) and normalize while result remains in Acc(L0C)",
+        "Consume residual from Vec(UB) and normalize in Acc(L0C)",
         "Store only final BF16 normalized output to GM"
       ],
       "operations": [
@@ -3274,7 +3814,10 @@
         "normed = pl.row_expand_div(residual_acc, rms)",
         "out = pl.col_expand_mul(normed, gamma)"
       ],
-      "notes": "The matmul output is never materialized in HBM; residual and RMSNorm consume Acc directly."
+      "notes": "The matmul output is never materialized in HBM; residual and RMSNorm consume Acc directly.",
+      "hbm_read_kb": 0.0,
+      "hbm_write_kb": 0.0,
+      "hbm_saved_kb": 0
     },
     "partial_rms_sum_squares": {
       "name": "partial_rms_sum_squares",
@@ -3288,7 +3831,10 @@
         "sq = pl.mul(acc_tile, acc_tile)",
         "partial = pl.row_sum(sq)"
       ],
-      "notes": "Partial sums are B-sized row vectors, not full hidden-state intermediates."
+      "notes": "Partial sums are B-sized row vectors, not full hidden-state intermediates.",
+      "hbm_read_kb": 0.0,
+      "hbm_write_kb": 0.0,
+      "hbm_saved_kb": 0
     },
     "fused_matmul_swiglu": {
       "name": "fused_matmul_swiglu",
@@ -3308,10 +3854,151 @@
         "up = gate_up[:, 1, :]",
         "out = pl.mul(pl.silu(gate), up)"
       ],
-      "notes": "Gate/up tensors are not separately written to HBM."
+      "notes": "Gate/up tensors are not separately written to HBM.",
+      "hbm_read_kb": 0.0,
+      "hbm_write_kb": 0.0,
+      "hbm_saved_kb": 0
     },
     "pypto_available": {
       "available": false
+    },
+    "coda_q_proj_rmsnorm": {
+      "name": "coda_q_proj_rmsnorm",
+      "purpose": "RMSNorm(input) + MLA Q projection",
+      "memory_flow": [
+        "Load hidden (Vec)",
+        "Load gamma (Vec)",
+        "RMSNorm",
+        "Load w_q (Mat\u2192L0B)",
+        "matmul\u2192Q"
+      ],
+      "operations": [
+        "normed = rms_norm(x, gamma)",
+        "q = normed @ w_q"
+      ],
+      "notes": "Q intermediate (3.0KB) stays in Acc. K-tiling: 96 blocks.",
+      "hbm_read_kb": 3080.0,
+      "hbm_write_kb": 3.0,
+      "hbm_saved_kb": 4.0
+    },
+    "coda_kv_proj": {
+      "name": "coda_kv_proj",
+      "purpose": "Packed K+V MLA projection",
+      "memory_flow": [
+        "Load hidden (Vec)",
+        "Load w_kv (Mat\u2192L0B)",
+        "matmul\u2192K+V",
+        "split\u2192K, V"
+      ],
+      "operations": [
+        "kv = hidden @ w_kv",
+        "k, v = split(kv, dim=1)"
+      ],
+      "notes": "Single weight load for K+V (2048KB). Split in epilogue.",
+      "hbm_read_kb": 2052.0,
+      "hbm_write_kb": 2.0,
+      "hbm_saved_kb": 4.0
+    },
+    "coda_attn_out_residual_rmsnorm": {
+      "name": "coda_attn_out_residual_rmsnorm",
+      "purpose": "Attn output proj + residual + RMSNorm",
+      "memory_flow": [
+        "Load attn_out (Vec)",
+        "Load w_out (Mat\u2192L0B)",
+        "matmul\u2192hidden",
+        "Load residual (Vec)",
+        "Load gamma (Vec)",
+        "add + RMSNorm",
+        "store"
+      ],
+      "operations": [
+        "h = attn_out @ w_out",
+        "h = h + residual",
+        "out = rms_norm(h, gamma)"
+      ],
+      "notes": "Core CODA pattern. GEMM output (4.0KB) never hits HBM.",
+      "hbm_read_kb": 3083.0,
+      "hbm_write_kb": 4.0,
+      "hbm_saved_kb": 4.0
+    },
+    "coda_moe_gate": {
+      "name": "coda_moe_gate",
+      "purpose": "MoE router: GEMM + top-k",
+      "memory_flow": [
+        "Load hidden (Vec)",
+        "Load w_gate (Mat\u2192L0B)",
+        "matmul\u2192logits",
+        "topk\u2192indices+weights"
+      ],
+      "operations": [
+        "logits = hidden @ w_gate",
+        "topk(logits, k=8)"
+      ],
+      "notes": "Small kernel (0KB logits). K-tiling overhead significant.",
+      "hbm_read_kb": 516.0,
+      "hbm_write_kb": 0.0625,
+      "hbm_saved_kb": 0.4375
+    },
+    "coda_expert_swiglu": {
+      "name": "coda_expert_swiglu",
+      "purpose": "Expert gate/up GEMM + SwiGLU (\u00d78 experts)",
+      "memory_flow": [
+        "Load hidden (Vec)",
+        "Load w_gate_up (Mat\u2192L0B)",
+        "matmul\u2192[gate,up]",
+        "SiLU(gate)*up",
+        "store"
+      ],
+      "operations": [
+        "gate_up = hidden @ w_gate_up",
+        "gate,up = split(gate_up)",
+        "out = silu(gate)*up"
+      ],
+      "notes": "Gate (4KB) and up (4KB) never hit HBM. Big CODA win.",
+      "hbm_read_kb": 8196.0,
+      "hbm_write_kb": 4.0,
+      "hbm_saved_kb": 8.0
+    },
+    "coda_expert_down_residual": {
+      "name": "coda_expert_down_residual",
+      "purpose": "Expert down proj + residual add (\u00d78 experts)",
+      "memory_flow": [
+        "Load swiglu_out (Vec)",
+        "Load w_down (Mat\u2192L0B)",
+        "matmul\u2192down",
+        "Load residual (Vec)",
+        "add",
+        "store"
+      ],
+      "operations": [
+        "down = swiglu @ w_down",
+        "out = down + residual"
+      ],
+      "notes": "Down output (4KB) consumed by residual add in Acc.",
+      "hbm_read_kb": 4104.0,
+      "hbm_write_kb": 4.0,
+      "hbm_saved_kb": 4.0
+    },
+    "coda_shared_expert": {
+      "name": "coda_shared_expert",
+      "purpose": "Shared expert: gate/up\u2192SwiGLU\u2192down (ring buffer)",
+      "memory_flow": [
+        "Load hidden (Vec)",
+        "Load w_up (Mat\u2192L0B)",
+        "matmul\u2192SwiGLU",
+        "Load w_down (Mat\u2192L0B)",
+        "matmul\u2192out",
+        "store"
+      ],
+      "operations": [
+        "gate_up = hidden @ w_up",
+        "swi = silu(gate)*up",
+        "out = swi @ w_down"
+      ],
+      "notes": "SwiGLU intermediate (4KB) stays in Vec(UB) via A5 ring buffer.",
+      "hbm_read_kb": 12292.0,
+      "hbm_write_kb": 4.0,
+      "hbm_saved_kb": 8.0
     }
   }
 }

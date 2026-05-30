@@ -181,9 +181,9 @@ def print_multi_batch(hw: Ascend950, cfg: DeepSeekV4FlashConfig) -> List[dict]:
 
 def print_layer_breakdown(hw: Ascend950, cfg: DeepSeekV4FlashConfig) -> dict:
     decode = hw.full_model_throughput(batch=1, cfg=cfg, weight_mode="fp8")
-    prefill = hw.full_model_throughput(batch=256, cfg=cfg, weight_mode="fp8")
+    batched_decode = hw.full_model_throughput(batch=256, cfg=cfg, weight_mode="fp8")
     layer_b1 = decode.layer
-    layer_b256 = prefill.layer
+    layer_b256 = batched_decode.layer
 
     print("\nFull 32-layer model breakdown")
     rows = [
@@ -195,10 +195,10 @@ def print_layer_breakdown(hw: Ascend950, cfg: DeepSeekV4FlashConfig) -> dict:
             layer_b1.bottleneck,
         ],
         [
-            "Prefill B=256",
-            human_bytes(prefill.total_traffic_bytes),
+            "Batched decode proxy B=256",
+            human_bytes(batched_decode.total_traffic_bytes),
             human_bytes(layer_b256.coda_saved_bytes * cfg.layers),
-            f"{prefill.tokens_per_second:,.1f}",
+            f"{batched_decode.tokens_per_second:,.1f}",
             layer_b256.bottleneck,
         ],
     ]
@@ -206,8 +206,64 @@ def print_layer_breakdown(hw: Ascend950, cfg: DeepSeekV4FlashConfig) -> dict:
 
     return {
         "decode_b1": decode.to_dict(hw.hbm_bytes_per_s),
-        "prefill_b256": prefill.to_dict(hw.hbm_bytes_per_s),
+        "batched_decode_b256": batched_decode.to_dict(hw.hbm_bytes_per_s),
     }
+
+
+def print_prefill_decode_comparison(
+    hw: Ascend950,
+    cfg: DeepSeekV4FlashConfig,
+    batch: int = 1,
+    prompt_length: int = 256,
+) -> dict:
+    comparison = hw.prefill_decode_comparison(
+        batch=batch,
+        prompt_length=prompt_length,
+        cfg=cfg,
+        weight_mode="fp8",
+    )
+
+    print(f"\nFair prefill/decode comparison, B={batch}, prompt/generated tokens={prompt_length}")
+    rows = []
+    labels = {
+        "prefill": "Prefill one prompt",
+        "decode": "Decode serial steps",
+    }
+    for key in ("prefill", "decode"):
+        item = comparison[key]
+        rows.append(
+            [
+                labels[key],
+                item.total_tokens,
+                item.attention_pairs,
+                item.projection_passes,
+                f"{item.linear_layer_time_us:.1f}",
+                f"{item.attention_layer_time_us:.1f}",
+                f"{item.total_time_us / 1000.0:.1f}",
+                f"{item.tokens_per_second:,.1f}",
+                human_bytes(item.hbm_traffic_per_token_bytes),
+            ]
+        )
+    print(
+        table(
+            [
+                "Mode",
+                "Tokens",
+                "Attn pairs",
+                "Linear passes",
+                "Linear us/layer",
+                "Attn us/layer",
+                "Model ms",
+                "tok/s",
+                "HBM/token",
+            ],
+            rows,
+        )
+    )
+    print("- Fairness rule: both rows produce the same token count and causal attention pairs.")
+    print("- Difference measured here is launch/weight-reuse amortization, not different work.")
+
+    return {key: item.to_dict(hw.hbm_bytes_per_s) for key, item in comparison.items()}
 
 
 def main() -> None:
@@ -221,6 +277,7 @@ def main() -> None:
     fusion_b256 = print_fusion_savings(hw, cfg, batch=256)
     multi_batch = print_multi_batch(hw, cfg)
     full_model = print_layer_breakdown(hw, cfg)
+    prefill_decode_fair = print_prefill_decode_comparison(hw, cfg)
 
     results = {
         "hardware": hw.hardware_summary(),
@@ -229,6 +286,7 @@ def main() -> None:
         "fusion_savings": {"B1": fusion_b1, "B256": fusion_b256},
         "multi_batch": multi_batch,
         "full_model": full_model,
+        "prefill_decode_fair": prefill_decode_fair,
         "coda_kernels": describe_kernels(),
     }
     RESULTS_PATH.write_text(json.dumps(results, indent=2), encoding="utf-8")

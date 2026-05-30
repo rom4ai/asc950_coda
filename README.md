@@ -1,21 +1,26 @@
 # CODA on Ascend 950 for DeepSeek-v4
 
-This repository models DeepSeek-v4-flash/pro decode performance on Ascend 950
-and sketches CODA-style fused Transformer kernels in the PyPTO DSL. It is meant
-as a compact research artifact: the code captures the hardware model, operator
-roofline estimates, HBM traffic accounting, CODA fusion opportunities, and
-optimization roadmap behind the analysis in [REPORT.md](REPORT.md).
+This repository models DeepSeek-v4-flash/pro prefill and decode performance on
+Ascend 950 and sketches CODA-style fused Transformer kernels in the PyPTO DSL.
+It is meant as a compact research artifact: the code captures the hardware
+model, operator roofline estimates, HBM traffic accounting, CODA fusion
+opportunities, and a fair prefill/decode comparison behind the analysis in
+[REPORT.md](REPORT.md).
 
 ## Key Findings
 
 - Ascend 950 is modeled as 2 dies, 36 Cube cores, 72 Vector cores, and 2.4 TB/s
   HBM bandwidth, with explicit L0/L1/UB memory capacities.
-- Single-token decode is dominated by K-tiling and kernel overhead, not peak
-  compute throughput.
-- CODA epilogue fusion removes intermediate HBM traffic, but for small decode
-  batches weight reads and launch overhead still dominate.
-- Persistent kernels and batched/continuous decode are the highest-leverage
-  optimizations in the model.
+- Single-token decode is dominated by repeated projection/MoE passes, K-tiling,
+  and launch overhead, not peak compute throughput.
+- A true prefill/decode comparison must hold token count and causal attention
+  pairs fixed. The model now does this explicitly for prompt prefill vs serial
+  decode.
+- CODA epilogue fusion removes intermediate HBM traffic, but small decode
+  batches still suffer from repeated weight reads and launch overhead.
+- Persistent kernels and batched/continuous decode remain high-leverage decode
+  optimizations; prefill benefits mainly from amortizing the linear path across
+  prompt tokens.
 
 See [REPORT.md](REPORT.md) for the full tables, assumptions, and throughput
 estimates.
@@ -46,8 +51,8 @@ python analyze.py
 ```
 
 `analyze.py` prints the hardware/model summary, operator roofline estimates,
-CODA fusion savings, and full-model decode breakdown. It also refreshes
-`results.json`.
+CODA fusion savings, batched decode proxy results, and a token-fair
+prefill-vs-serial-decode comparison. It also refreshes `results.json`.
 
 ## Run the Analyses
 
@@ -77,11 +82,14 @@ The tests cover:
 - Roofline timing with and without K-tiling overhead.
 - Batch-size effects on HBM traffic per token.
 - CODA traffic savings.
+- Token-fair prefill/decode comparisons with equal causal attention pairs.
+- Decode KV-cache read/write traffic as context length grows.
+- `analyze.py` output coverage for the fair prefill/decode result block.
 - PyTorch reference formulas for RMSNorm, residual GEMM, and SwiGLU.
 
 ## Notes
 
 This is an analytical model and kernel sketch repository, not a measured silicon
-benchmark. Hardware parameters, DeepSeek-v4-pro dimensions, and PyPTO mappings
-should be treated as modeling assumptions unless validated against an official
-platform and compiler stack.
+benchmark. Hardware parameters, DeepSeek-v4-pro dimensions, simplified MLA
+attention accounting, and PyPTO mappings should be treated as modeling
+assumptions unless validated against an official platform and compiler stack.
