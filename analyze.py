@@ -237,6 +237,8 @@ def print_prefill_decode_comparison(
                 item.total_tokens,
                 item.attention_pairs,
                 item.projection_passes,
+                human_bytes(item.attention.kv_cache_read_bytes),
+                human_bytes(item.attention.kv_cache_write_bytes),
                 f"{item.linear_layer_time_us:.1f}",
                 f"{item.attention_layer_time_us:.1f}",
                 f"{item.total_time_us / 1000.0:.1f}",
@@ -251,6 +253,8 @@ def print_prefill_decode_comparison(
                 "Tokens",
                 "Attn pairs",
                 "Linear passes",
+                "KV read/layer",
+                "KV write/layer",
                 "Linear us/layer",
                 "Attn us/layer",
                 "Model ms",
@@ -266,6 +270,196 @@ def print_prefill_decode_comparison(
     return {key: item.to_dict(hw.hbm_bytes_per_s) for key, item in comparison.items()}
 
 
+def print_decode_context_sweep(
+    hw: Ascend950,
+    cfg: DeepSeekV4FlashConfig,
+    batch: int = 1,
+    context_lengths: Sequence[int] = (0, 128, 512, 2048),
+) -> List[dict]:
+    print(f"\nDecode context-length sweep, B={batch}, generated tokens=1")
+    rows = []
+    results = []
+    for context_length in context_lengths:
+        item = hw.decode_workload(
+            batch=batch,
+            context_length=context_length,
+            generated_tokens=1,
+            cfg=cfg,
+            weight_mode="fp8",
+        )
+        rows.append(
+            [
+                context_length,
+                item.total_tokens,
+                item.attention_pairs,
+                item.projection_passes,
+                human_bytes(item.attention.kv_cache_read_bytes),
+                human_bytes(item.attention.kv_cache_write_bytes),
+                f"{item.attention_layer_time_us:.3f}",
+                f"{item.total_time_us / 1000.0:.3f}",
+                f"{item.tokens_per_second:,.1f}",
+            ]
+        )
+        results.append(item.to_dict(hw.hbm_bytes_per_s))
+    print(
+        table(
+            [
+                "Context",
+                "Tokens",
+                "Attn pairs",
+                "Linear passes",
+                "KV read/layer",
+                "KV write/layer",
+                "Attn us/layer",
+                "Model ms",
+                "tok/s",
+            ],
+            rows,
+        )
+    )
+    print("- This isolates KV-cache read growth while keeping decode generation length fixed.")
+    return results
+
+
+def print_prefill_length_sweep(
+    hw: Ascend950,
+    cfg: DeepSeekV4FlashConfig,
+    batch: int = 1,
+    prompt_lengths: Sequence[int] = (64, 128, 256, 512),
+) -> List[dict]:
+    print(f"\nPrefill prompt-length sweep, B={batch}")
+    rows = []
+    results = []
+    for prompt_length in prompt_lengths:
+        item = hw.prefill_workload(
+            batch=batch,
+            prompt_length=prompt_length,
+            cfg=cfg,
+            weight_mode="fp8",
+        )
+        rows.append(
+            [
+                prompt_length,
+                item.total_tokens,
+                item.attention_pairs,
+                item.projection_passes,
+                human_bytes(item.attention.kv_cache_read_bytes),
+                human_bytes(item.attention.kv_cache_write_bytes),
+                f"{item.linear_layer_time_us:.1f}",
+                f"{item.attention_layer_time_us:.1f}",
+                f"{item.tokens_per_second:,.1f}",
+            ]
+        )
+        results.append(item.to_dict(hw.hbm_bytes_per_s))
+    print(
+        table(
+            [
+                "Prompt",
+                "Tokens",
+                "Attn pairs",
+                "Linear passes",
+                "KV read/layer",
+                "KV write/layer",
+                "Linear us/layer",
+                "Attn us/layer",
+                "tok/s",
+            ],
+            rows,
+        )
+    )
+    print("- This is true prompt prefill: one linear pass over all prompt tokens.")
+    return results
+
+
+def print_persistent_kernel_sensitivity(
+    hw: Ascend950,
+    cfg: DeepSeekV4FlashConfig,
+) -> dict:
+    scenarios = {
+        "decode": {
+            "baseline": hw.decode_workload(
+                batch=1,
+                context_length=0,
+                generated_tokens=1,
+                cfg=cfg,
+                weight_mode="fp8",
+                include_k_tiling=True,
+            ),
+            "no_k_tiling": hw.decode_workload(
+                batch=1,
+                context_length=0,
+                generated_tokens=1,
+                cfg=cfg,
+                weight_mode="fp8",
+                include_k_tiling=False,
+            ),
+        },
+        "prefill": {
+            "baseline": hw.prefill_workload(
+                batch=1,
+                prompt_length=256,
+                cfg=cfg,
+                weight_mode="fp8",
+                include_k_tiling=True,
+            ),
+            "no_k_tiling": hw.prefill_workload(
+                batch=1,
+                prompt_length=256,
+                cfg=cfg,
+                weight_mode="fp8",
+                include_k_tiling=False,
+            ),
+        },
+    }
+
+    print("\nPersistent-kernel sensitivity proxy")
+    rows = []
+    results = {}
+    for mode in ("decode", "prefill"):
+        baseline = scenarios[mode]["baseline"]
+        no_k_tiling = scenarios[mode]["no_k_tiling"]
+        saved_us = baseline.total_time_us - no_k_tiling.total_time_us
+        rows.append(
+            [
+                mode,
+                baseline.total_tokens,
+                baseline.attention_pairs,
+                baseline.projection_passes,
+                human_bytes(baseline.attention.kv_cache_read_bytes),
+                human_bytes(baseline.attention.kv_cache_write_bytes),
+                f"{baseline.total_time_us / 1000.0:.3f}",
+                f"{no_k_tiling.total_time_us / 1000.0:.3f}",
+                f"{saved_us / 1000.0:.3f}",
+                f"{baseline.tokens_per_second:,.1f}",
+                f"{no_k_tiling.tokens_per_second:,.1f}",
+            ]
+        )
+        results[mode] = {
+            "baseline": baseline.to_dict(hw.hbm_bytes_per_s),
+            "no_k_tiling": no_k_tiling.to_dict(hw.hbm_bytes_per_s),
+        }
+    print(
+        table(
+            [
+                "Mode",
+                "Tokens",
+                "Attn pairs",
+                "Linear passes",
+                "KV read/layer",
+                "KV write/layer",
+                "Baseline ms",
+                "No-K ms",
+                "Saved ms",
+                "Baseline tok/s",
+                "No-K tok/s",
+            ],
+            rows,
+        )
+    )
+    print("- No-K removes modeled K-tiling overhead; it is a persistent-kernel proxy, not a measured kernel.")
+    return results
+
+
 def main() -> None:
     hw = Ascend950()
     cfg = DeepSeekV4FlashConfig()
@@ -278,6 +472,9 @@ def main() -> None:
     multi_batch = print_multi_batch(hw, cfg)
     full_model = print_layer_breakdown(hw, cfg)
     prefill_decode_fair = print_prefill_decode_comparison(hw, cfg)
+    decode_context_sweep = print_decode_context_sweep(hw, cfg)
+    prefill_length_sweep = print_prefill_length_sweep(hw, cfg)
+    persistent_kernel_sensitivity = print_persistent_kernel_sensitivity(hw, cfg)
 
     results = {
         "hardware": hw.hardware_summary(),
@@ -287,6 +484,9 @@ def main() -> None:
         "multi_batch": multi_batch,
         "full_model": full_model,
         "prefill_decode_fair": prefill_decode_fair,
+        "decode_context_sweep": decode_context_sweep,
+        "prefill_length_sweep": prefill_length_sweep,
+        "persistent_kernel_sensitivity": persistent_kernel_sensitivity,
         "coda_kernels": describe_kernels(),
     }
     RESULTS_PATH.write_text(json.dumps(results, indent=2), encoding="utf-8")

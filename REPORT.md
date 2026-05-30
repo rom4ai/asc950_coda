@@ -165,10 +165,10 @@ model because it has no prompt length or causal attention matrix.
 
 The fair comparison holds token count and causal attention pairs fixed.
 
-| Mode | Tokens | Attn pairs | Linear passes | Linear us/layer | Attn us/layer | Model ms | tok/s | HBM/token |
-|------|-------:|-----------:|--------------:|----------------:|--------------:|---------:|------:|----------:|
-| Prefill one prompt | 256 | 32,896 | 1 | 224.2 | 28.3 | 8.1 | 31,686.6 | 24.39 MB |
-| Decode serial steps | 256 | 32,896 | 256 | 25,469.8 | 28.3 | 815.9 | 313.7 | 3.62 GB |
+| Mode | Tokens | Attn pairs | Linear passes | KV read/layer | KV write/layer | Linear us/layer | Attn us/layer | Model ms | tok/s | HBM/token |
+|------|-------:|-----------:|--------------:|--------------:|---------------:|----------------:|--------------:|---------:|------:|----------:|
+| Prefill one prompt | 256 | 32,896 | 1 | 64.25 MB | 512.00 KB | 224.2 | 28.3 | 8.1 | 31,686.6 | 24.39 MB |
+| Decode serial steps | 256 | 32,896 | 256 | 64.25 MB | 512.00 KB | 25,469.8 | 28.3 | 815.9 | 313.7 | 3.62 GB |
 
 ### Fairness Rule
 
@@ -182,6 +182,30 @@ the same 32,896 causal attention pairs. The difference is scheduling:
 prefill uses one large projection/MoE pass, while serial decode repeats the
 same path 256 times.
 
+### Decode Context Sweep
+
+This sweep holds decode generation length fixed at one token and varies the
+existing KV-cache context length.
+
+| Context | Tokens | Attn pairs | Linear passes | KV read/layer | KV write/layer | Attn us/layer | Model ms | tok/s |
+|--------:|-------:|-----------:|--------------:|--------------:|---------------:|--------------:|---------:|------:|
+| 0 | 1 | 1 | 1 | 2.00 KB | 2.00 KB | 0.002 | 3.184 | 314.1 |
+| 128 | 1 | 129 | 1 | 258.00 KB | 2.00 KB | 0.111 | 3.187 | 313.7 |
+| 512 | 1 | 513 | 1 | 1.00 MB | 2.00 KB | 0.439 | 3.198 | 312.7 |
+| 2,048 | 1 | 2,049 | 1 | 4.00 MB | 2.00 KB | 1.749 | 3.240 | 308.7 |
+
+### Prefill Prompt-Length Sweep
+
+This sweep models true prompt prefill: one projection/MoE pass over all prompt
+tokens plus causal attention over the prompt.
+
+| Prompt | Tokens | Attn pairs | Linear passes | KV read/layer | KV write/layer | Linear us/layer | Attn us/layer | tok/s |
+|-------:|-------:|-----------:|--------------:|--------------:|---------------:|----------------:|--------------:|------:|
+| 64 | 64 | 2,080 | 1 | 4.06 MB | 128.00 KB | 101.1 | 1.8 | 19,432.5 |
+| 128 | 128 | 8,256 | 1 | 16.12 MB | 256.00 KB | 136.6 | 7.2 | 27,826.9 |
+| 256 | 256 | 32,896 | 1 | 64.25 MB | 512.00 KB | 224.2 | 28.3 | 31,686.6 |
+| 512 | 512 | 131,328 | 1 | 256.50 MB | 1.00 MB | 399.4 | 112.5 | 31,257.9 |
+
 ---
 
 ## 6. Optimization Roadmap
@@ -192,9 +216,19 @@ same path 256 times.
 |----------|------------|-----------------|---------------------|
 | CODA epilogue fusion | Prefill + decode | Reduces intermediate HBM traffic | Modeled and tested |
 | Batched / continuous decode | Decode | Amortizes weight reads and launch overhead | Modeled as batch proxy |
-| Persistent kernel | Decode | Reduces repeated launch overhead | Recommendation only |
-| Prompt-length prefill modeling | Prefill | Makes prefill/decode comparison fair | Implemented |
-| KV-cache context sweep | Decode | Measures long-context decode cost | Partially implemented via `context_length` |
+| Persistent kernel | Decode + prefill | Reduces repeated launch overhead | Modeled as separate no-K sensitivity proxy |
+| Prompt-length prefill modeling | Prefill | Makes prefill/decode comparison fair | Implemented and swept |
+| KV-cache context sweep | Decode | Measures long-context decode cost | Implemented via `context_length` sweep |
+
+### Persistent-Kernel Sensitivity Proxy
+
+The no-K rows remove modeled K-tiling overhead. They are a proxy for persistent
+kernel launch amortization, not measured kernels.
+
+| Mode | Tokens | Attn pairs | Linear passes | KV read/layer | KV write/layer | Baseline ms | No-K ms | Saved ms | Baseline tok/s | No-K tok/s |
+|------|-------:|-----------:|--------------:|--------------:|---------------:|------------:|--------:|---------:|---------------:|-----------:|
+| decode | 1 | 1 | 1 | 2.00 KB | 2.00 KB | 3.184 | 1.616 | 1.568 | 314.1 | 618.9 |
+| prefill | 256 | 32,896 | 1 | 64.25 MB | 512.00 KB | 8.079 | 6.511 | 1.568 | 31,686.6 | 39,317.3 |
 
 ### Current Optimization Interpretation
 
@@ -206,6 +240,8 @@ B=1 decode:                 314.1 tok/s
 B=256 batched decode proxy: 35,685.1 tok/s
 S=256 true prefill:         31,686.6 tok/s
 S=256 serial decode:        313.7 tok/s
+Decode no-K proxy:          618.9 tok/s
+S=256 prefill no-K proxy:   39,317.3 tok/s
 ```
 
 ---
@@ -237,21 +273,22 @@ kernel overhead.
 
 ### 5. Tests Now Encode the Workload Semantics
 
-The test suite now checks the exact workload definitions instead of only
-checking batch scaling.
+The test suite now checks the exact workload definitions, the fair
+prefill/decode result block, long-context decode sweeps, prompt-length prefill
+sweeps, KV-cache fields, and separated persistent-kernel sensitivity results.
 
 ---
 
 ## 8. Recommendations
 
-| Priority | Action | Impact |
+| Priority | Action | Status |
 |----------|--------|--------|
-| P0 | Keep `B=256` labeled as batched decode proxy unless prompt length is modeled | Prevents invalid prefill conclusions |
-| P0 | Use `prefill_decode_comparison()` for all prefill/decode claims | Enforces token and attention fairness |
-| P0 | Report tokens, attention pairs, linear passes, and KV-cache traffic in every comparison | Makes workload differences explicit |
-| P1 | Add long-context decode sweeps over `context_length` | Quantifies KV-cache scaling |
-| P1 | Add prefill prompt-length sweeps over `prompt_length` | Quantifies true prefill scaling |
-| P2 | Validate persistent-kernel claims separately for decode and prefill | Avoids mixing different bottlenecks |
+| P0 | Keep `B=256` labeled as batched decode proxy unless prompt length is modeled | Enforced in report wording and analysis keys |
+| P0 | Use `prefill_decode_comparison()` for all prefill/decode claims | Implemented for fair comparison |
+| P0 | Report tokens, attention pairs, linear passes, and KV-cache traffic in every comparison | Implemented in fair comparison and sweeps |
+| P1 | Add long-context decode sweeps over `context_length` | Implemented for 0, 128, 512, and 2,048 tokens |
+| P1 | Add prefill prompt-length sweeps over `prompt_length` | Implemented for 64, 128, 256, and 512 tokens |
+| P2 | Validate persistent-kernel claims separately for decode and prefill | Implemented as separate no-K sensitivity proxy |
 
 ---
 
@@ -266,12 +303,12 @@ checking batch scaling.
 | `results.json` | Structured benchmark and fair comparison results |
 | `tests/test_hw_model.py` | Hardware, roofline, batch, and CODA tests |
 | `tests/test_prefill_decode.py` | Token-fair prefill/decode and KV-cache tests |
-| `tests/test_analyze_results.py` | Ensures analysis output includes fair comparison |
+| `tests/test_analyze_results.py` | Ensures analysis output includes fair comparison, sweeps, KV-cache fields, and persistent-kernel sensitivity |
 | `tests/test_baseline_pt.py` | PyTorch reference op tests |
 
 Latest verification:
 
 ```
 python analyze.py
-python -m pytest  # 12 passed
+python -m pytest  # 13 passed
 ```
